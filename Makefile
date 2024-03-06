@@ -1,5 +1,6 @@
 CC:=g++
-FLAG:=-std=c++23 -Wall -Wextra -O2
+FLAG:=-std=c++23 -Wall -Wextra -O2 -lpthread
+LFLAG:=-lpthread
 SERV_OBJ:=server.o
 SERV_ELF:=server.elf
 CLIE_OBJ:=client.o
@@ -13,8 +14,8 @@ dep: $(SOURCE) $(HEADER_DIR) $(HEADER)
 	$(CC) $(FLAG) -I $(HEADER_DIR) -c $(CLIE_SOURCE)
 	$(CC) $(FLAG) -I $(HEADER_DIR) -c $(SERV_SOURCE)
 all: $(SERV_OBJ) $(CLIE_OBJ)
-	$(CC) $(CLIE_OBJ) -o $(CLIE_ELF)
-	$(CC) $(SERV_OBJ) -o $(SERV_ELF)
+	$(CC) $(CLIE_OBJ) -o $(CLIE_ELF) $(LFLAG)
+	$(CC) $(SERV_OBJ) -o $(SERV_ELF) $(LFLAG)
 
 .PHONY: clean
 clean:
