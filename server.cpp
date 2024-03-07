@@ -52,8 +52,6 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
         return 1;
     }
     
-    ssize_t recv_num = 0;
-
     tcp_manager server;
     server.sock_fd = sock_fd;
     server.addr_from = addr_serv;

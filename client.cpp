@@ -36,7 +36,6 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
     std::cout << format("connect to {}:{}", host, server_port) << std::endl;
     int id = -1;
     id = client.connect(addr_serv);
-    auto& channel = client.connections[id];
 
     std::cout << format("op:\n\tdns <host>\n\tsend <string>\n\tcal <num> <op> <num>\n\ttrans <file path>\n\trequest\n\tclose") << std::endl;
     while (true)
@@ -46,7 +45,7 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
         std::string input;
         std::cin >> input;
         std::transform(input.begin(), input.end(), input.begin(), [](unsigned char c){ return std::tolower(c); });
-        size_t begin_pos, end_pos = input.length();
+        size_t begin_pos = input.length();
         if ((begin_pos = input.find("dns")) != std::string::npos)
         {
             std::string send_string;
@@ -81,7 +80,6 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
     }
 
     std::cout << "close connection" << std::endl;
-    while(!(~channel.close()));
 
     return 0;
 }

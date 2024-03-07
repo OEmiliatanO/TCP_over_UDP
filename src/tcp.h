@@ -38,7 +38,7 @@ struct tcp_connection
     size_t header_len; // byte
 
     std::queue<packet_t> qu;
-    std::vector<packet_t> buffer;
+    std::deque<packet_t> buffer;
     std::mutex mutex;
     std::condition_variable cv;
 
@@ -77,9 +77,7 @@ struct tcp_connection
         if (not connected) return -1;
         ssize_t send_num;
         while((send_num = sendto(sock_fd, (char *)&segment, len, 0, (sockaddr *)&addr_to, len_addr_to)) < 0)
-        {
             std::cerr << errno << std::endl;
-        }
         this->seq += (uint16_t)send_num;
         return send_num;
     }
@@ -88,8 +86,17 @@ struct tcp_connection
     {
         if (not connected) return -1;
         static tcp_segment segment;
-        load_segment(segment, data, len);
-        return send(segment, (size_t)segment.header_len * 4 + len);
+        ssize_t send_num;
+        while (true)
+        {
+            load_segment(segment, data, len);
+            segment.checksum = tcp_checksum((void *)&segment, segment.header_len * 4);
+            send_num = send(segment, (size_t)segment.header_len * 4 + len);
+            recv(segment);
+            if (segment.ACK and not corrupt(segment))
+                break;
+        }
+        return send_num;
     }
 
     ssize_t recv(tcp_segment& segment)
@@ -109,14 +116,16 @@ struct tcp_connection
     {
         tcp_segment segment;
         ssize_t recv_num = recv(segment);
-        if (recv_num <= segment.header_len * 4) return 0;
         if (segment.FIN and not corrupt(segment))
         {
+            std::cerr << "recv FIN" << std::endl;
             load_segment(segment);
             segment.ACK = true;
+            segment.checksum = tcp_checksum((void *)&segment, segment.header_len * 4);
             send(segment, (size_t)segment.header_len * 4);
             connected = false;
             close();
+            return -1;
         }
         memcpy(buf, segment.data, std::min((size_t)recv_num - segment.header_len * 4, len));
         return recv_num - segment.header_len * 4;
@@ -124,15 +133,20 @@ struct tcp_connection
 
     int close()
     {
-        tcp_segment segment;
+        std::cerr << "in close():" << std::endl;
+        static tcp_segment segment;
         load_segment(segment);
         segment.FIN = true;
-        send(segment, (size_t)segment.header_len * 4);
+        segment.checksum = tcp_checksum((void *)&segment, segment.header_len * 4);
+        while (send(segment, (size_t)segment.header_len * 4) < 0);
+        std::cerr << "send FIN" << std::endl;
+        std::cerr << "wait for ACK" << std::endl;
         recv(segment);
         if (not (segment.ACK and not corrupt(segment)))
             return -1;
         if (connected)
         {
+            std::cerr << "wait for FIN" << std::endl;
             recv(segment);
             if (not (segment.FIN and not corrupt(segment)))
                 return -1;
@@ -223,12 +237,12 @@ struct tcp_manager
                         std::cerr << std::format("thread #{}: send SYN-ACK segment, {} bytes", thread_id, segment.header_len * 4) << std::endl;
                         channel.send(segment, segment.header_len * 4);
 
-                        // should recv ACK
                         std::cerr << std::format("thread #{}: wait to recv ACK segment", thread_id) << std::endl;
                         ssize_t recv_num = channel.recv(segment);
-                        if (segment.ACK and not corrupt(segment))
+                        if (recv_num > 0 and segment.ACK and not corrupt(segment))
                         {
-                            // connection established
+                            std::cerr << "connection established" << std::endl;
+                            std::cerr << std::format("current seq = {}, ack = {}", channel.seq, channel.ack) << std::endl;
                             while (connections[thread_id].connected)
                             {
                                 // the main server function
@@ -237,7 +251,6 @@ struct tcp_manager
                             }
                         }
 
-                        std::cerr << std::format("thread #{}: close connection", thread_id) << std::endl;
                         // source release
                         connections.erase(thread_id);
                         auto key = std::make_pair(sockaddr_to_string(channel.addr_from), sockaddr_to_string(channel.addr_to));
@@ -254,7 +267,7 @@ struct tcp_manager
     int connect(sockaddr_in& addr_to)
     {
         int thread_id = gen_id();
-        tcp_segment segment;
+        static tcp_segment segment;
         connections[thread_id].sock_fd = this->sock_fd;
         tcp_connection& channel = connections[thread_id];
         channel.header_len = sizeof(segment) - MSS * sizeof(char);
@@ -271,7 +284,7 @@ struct tcp_manager
         
         // send SYN
         ssize_t send_num;
-        send_num = channel.send(segment, (size_t)segment.header_len * 4);
+        while ((send_num = channel.send(segment, (size_t)segment.header_len * 4)) < 0);
         std::cerr << "SYN sent" << std::endl;
 
         getsockname(this->sock_fd, (struct sockaddr*)&channel.addr_from, (socklen_t *)&channel.len_addr_from);
@@ -281,7 +294,16 @@ struct tcp_manager
         // receive SYN-ACK
         auto key = std::make_pair(sockaddr_to_string(channel.addr_from), sockaddr_to_string(channel.addr_to));
         mapping[key] = thread_id;
-        _recv();
+
+        // dispatcher thread
+        if (threads.empty())
+        {
+            threads.emplace_back([&]() { while (true) { _recv(); } });
+            threads.back().detach();
+        }
+
+        memset((void *)&segment, 0, sizeof(segment));
+        std::cerr << "wait for SYN-ACK" << std::endl;
         ssize_t recv_num = channel.recv(segment);
         if (recv_num < 0 or not (segment.ACK and segment.SYN and !tcp_checksum((void *)&segment, (size_t)segment.header_len * 4)))
         {
@@ -291,6 +313,7 @@ struct tcp_manager
                 std::cerr << "not recv ACK" << std::endl;
             mapping.erase(key);
             connections.erase(thread_id);
+            threads.clear();
             return -1;
         }
 
@@ -313,6 +336,7 @@ struct tcp_manager
     {
         sockaddr_in client;
         socklen_t len_client = sizeof(client);
+        memset((void *)&this->tmp_segment, 0, sizeof(this->tmp_segment));
         ssize_t recv_num = recvfrom(this->sock_fd, (char *)&this->tmp_segment, 24 + MSS, 0, (sockaddr *)&client, (socklen_t *)&len_client);
         if (recv_num < 0) return -1;
         auto key = std::make_pair(sockaddr_to_string(this->addr_from), sockaddr_to_string(client));
@@ -335,7 +359,6 @@ struct tcp_manager
         std::lock_guard<std::mutex> lock(connections[thread_id].mutex);
         connections[thread_id].qu.emplace(recv_num, this->tmp_segment);
         connections[thread_id].cv.notify_one();
-        memset((void *)&this->tmp_segment, 0, sizeof(this->tmp_segment));
         return 0;
     }
 
@@ -343,10 +366,9 @@ struct tcp_manager
     {
         return connections[id].send(data, len);
     }
-
+    
     ssize_t recv(int id, void* buffer, size_t len)
     {
-        _recv();
         return connections[id].recv(buffer, len);
     }
 
