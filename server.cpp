@@ -19,12 +19,25 @@ constexpr size_t buf_size = 20;
 void server_func(tcp_connection& channel, int thread_id)
 {
     char buf[buf_size]{};
+    char data[buf_size]{};
     cout << format("thread #{}: start to recv data", thread_id) << endl;
     ssize_t recv_num;
     while(~(recv_num = channel.recv((void *)buf, buf_size)))
     {
-        cout << format("thread #{}: recv from client [{}:{}]: \"{}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf) << endl;
+        cout << "Opcode: " << (int)buf[0] << std::endl;
+        if (buf[0] == 1)
+        {
+            cout << format("thread #{}: recv from {}:{}: \"dns {}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
+            strcpy(data, DNS(buf+1));
+            cout << "The IP address is " << data << std::endl;
+            channel.send((void *)data, strlen(data));
+        }
+        else if (buf[0] == 2)
+        {
+            cout << format("thread #{}: recv from {}:{}: \"{}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
+        }
         memset(buf, 0, sizeof(buf));
+        memset(data, 0, sizeof(data));
     }
 
     cout << format("thread #{}: close connection", thread_id) << endl;
@@ -57,7 +70,7 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
     server.addr_from = addr_serv;
     server.server_func = server_func;
     
-    std::cout << "listen in port " << listen_port << std::endl;
+    std::cout << "Listen in port #" << listen_port << std::endl;
     server.listen();
 
     return 0;

@@ -50,18 +50,19 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
         {
             std::string send_string;
             std::cin >> send_string;
-            strcpy(message, send_string.c_str());
-            client.send(id, (void *)message, (size_t)send_string.size());
+            message[0] = 1;
+            strcpy(message+1, send_string.c_str());
+            client.send(id, (void *)message, (size_t)1+send_string.size());
             client.recv(id, (void *)respond, 20);
-            std::cout << std::format("respond for \"{}\": {}", input, respond) << std::endl;
+            std::cout << std::format("The IP address of {} is {}", input, respond) << std::endl;
         }
         else if((begin_pos = input.find("send")) != std::string::npos)
         {
             std::string send_string;
             std::cin >> send_string;
-            strcpy(message, send_string.c_str());
-            std::cerr << "message = " << message << std::endl;
-            client.send(id, (void *)message, (size_t)send_string.size());
+            message[0] = 2;
+            strcpy(message+1, send_string.c_str());
+            client.send(id, (void *)message, (size_t)1+send_string.size());
         }
         else if((begin_pos = input.find("cal")) != std::string::npos)
         {

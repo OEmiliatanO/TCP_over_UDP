@@ -91,10 +91,15 @@ struct tcp_connection
         {
             load_segment(segment, data, len);
             segment.checksum = tcp_checksum((void *)&segment, segment.header_len * 4);
+            //std::cerr << "Send packet" << std::endl;
+            //std::cerr << "data[0] = " << (int)((char *)data)[0] << std::endl;
             send_num = send(segment, (size_t)segment.header_len * 4 + len);
             recv(segment);
             if (segment.ACK and not corrupt(segment))
+            {
+                //std::cerr << "Receive ACK" << std::endl;
                 break;
+            }
         }
         return send_num;
     }
@@ -116,9 +121,10 @@ struct tcp_connection
     {
         tcp_segment segment;
         ssize_t recv_num = recv(segment);
+        std::cerr << "Receive packet with " << recv_num << " bytes" << std::endl;
         if (segment.FIN and not corrupt(segment))
         {
-            std::cerr << "recv FIN" << std::endl;
+            std::cerr << "Receive FIN" << std::endl;
             load_segment(segment);
             segment.ACK = true;
             segment.checksum = tcp_checksum((void *)&segment, segment.header_len * 4);
@@ -128,6 +134,10 @@ struct tcp_connection
             return -1;
         }
         memcpy(buf, segment.data, std::min((size_t)recv_num - segment.header_len * 4, len));
+        load_segment(segment);
+        segment.ACK = true;
+        segment.checksum = tcp_checksum((void *)&segment, segment.header_len * 4);
+        send(segment, (size_t)segment.header_len * 4);
         return recv_num - segment.header_len * 4;
     }
 
@@ -239,7 +249,7 @@ struct tcp_manager
 
                         ssize_t recv_num = channel.recv(segment);
                         std::cerr << std::format("thread #{}: Receive ACK packet", thread_id) << std::endl;
-                        std::cerr << std::format("Receive a packet (seq_num = {}, ack_num = {})", segment.seq, segment.ack) << std::endl;
+                        std::cerr << std::format("Receive a packet (seq_num = {}, ack_num = {})", (uint16_t)segment.seq, (uint16_t)segment.ack) << std::endl;
                         if (recv_num > 0 and segment.ACK and not corrupt(segment))
                         {
                             std::cerr << "=====Complete the three-way handshake=====" << std::endl;
@@ -321,7 +331,7 @@ struct tcp_manager
         }
 
         std::cerr << std::format("Receive a packet (SYN-ACK) from {}:{}", inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port));
-        std::cerr << std::format("\tReceive a packet (seq_num = {}, ack_num = {})", segment.seq, segment.ack) << std::endl;
+        std::cerr << std::format("\tReceive a packet (seq_num = {}, ack_num = {})", (uint16_t)segment.seq, (uint16_t)segment.ack) << std::endl;
         channel.ack = segment.seq + recv_num;
 
         channel.load_segment(segment);
