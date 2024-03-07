@@ -201,7 +201,7 @@ struct tcp_manager
                     std::cerr << "Reach the max number of connected client." << std::endl;
                     continue;
                 }
-                std::cerr << "threeway handshake start:" << std::endl;
+                std::cerr << "=====Start three-way handshake=====" << std::endl;
                 ++client_num;
 
 
@@ -234,15 +234,17 @@ struct tcp_manager
                         channel.load_segment(segment);
                         segment.ACK = true, segment.SYN = true;
                         segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4);
-                        std::cerr << std::format("thread #{}: send SYN-ACK segment, {} bytes", thread_id, segment.header_len * 4) << std::endl;
+                        std::cerr << std::format("thread #{}: Send SYN-ACK packet, {} bytes", thread_id, segment.header_len * 4) << std::endl;
                         channel.send(segment, segment.header_len * 4);
 
-                        std::cerr << std::format("thread #{}: wait to recv ACK segment", thread_id) << std::endl;
                         ssize_t recv_num = channel.recv(segment);
+                        std::cerr << std::format("thread #{}: Receive ACK packet", thread_id) << std::endl;
+                        std::cerr << std::format("Receive a packet (seq_num = {}, ack_num = {})", segment.seq, segment.ack) << std::endl;
                         if (recv_num > 0 and segment.ACK and not corrupt(segment))
                         {
-                            std::cerr << "connection established" << std::endl;
-                            std::cerr << std::format("current seq = {}, ack = {}", channel.seq, channel.ack) << std::endl;
+                            std::cerr << "=====Complete the three-way handshake=====" << std::endl;
+                            std::cerr << "=====Connection established=====" << std::endl;
+                            std::cerr << std::format("Current seq = {}, ack = {}", channel.seq, channel.ack) << std::endl;
                             while (connections[thread_id].connected)
                             {
                                 // the main server function
@@ -282,10 +284,12 @@ struct tcp_manager
         segment.ack = UNDEFINED;
         segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4);
         
+        std::cerr << "=====Start the three-way handshake=====" << std::endl;
         // send SYN
         ssize_t send_num;
         while ((send_num = channel.send(segment, (size_t)segment.header_len * 4)) < 0);
-        std::cerr << "SYN sent" << std::endl;
+        std::cerr << std::format("Send SYN to {}:{}", inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port)) << std::endl;
+        std::cerr << std::format("\tSend {} bytes", send_num) << std::endl;
 
         getsockname(this->sock_fd, (struct sockaddr*)&channel.addr_from, (socklen_t *)&channel.len_addr_from);
         this->addr_from = channel.addr_from;
@@ -303,7 +307,6 @@ struct tcp_manager
         }
 
         memset((void *)&segment, 0, sizeof(segment));
-        std::cerr << "wait for SYN-ACK" << std::endl;
         ssize_t recv_num = channel.recv(segment);
         if (recv_num < 0 or not (segment.ACK and segment.SYN and !tcp_checksum((void *)&segment, (size_t)segment.header_len * 4)))
         {
@@ -317,7 +320,8 @@ struct tcp_manager
             return -1;
         }
 
-        std::cerr << "SYN-ACK recv" << std::endl;
+        std::cerr << std::format("Receive a packet (SYN-ACK) from {}:{}", inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port));
+        std::cerr << std::format("\tReceive a packet (seq_num = {}, ack_num = {})", segment.seq, segment.ack) << std::endl;
         channel.ack = segment.seq + recv_num;
 
         channel.load_segment(segment);
@@ -325,10 +329,13 @@ struct tcp_manager
         segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4);
 
         // send ACK
-        std::cerr << "ACK sent" << std::endl;
+        std::cerr << std::format("Send a packet(ACK) to {}:{}", inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port)) << std::endl;
         send_num = channel.send(segment, (size_t)segment.header_len * 4);
+        std::cerr << std::format("\tSend {} bytes", send_num) << std::endl;
 
-        std::cerr << std::format("current seq = {}, ack = {}", channel.seq, channel.ack) << std::endl;
+        std::cerr << "=====Complete the three-way handshake=====" << std::endl;
+        std::cerr << "=====Connection established=====" << std::endl;
+        std::cerr << std::format("Current seq = {}, ack = {}", channel.seq, channel.ack) << std::endl;
         return thread_id;
     }
 
@@ -345,12 +352,12 @@ struct tcp_manager
             // recv SYN
             if (this->tmp_segment.SYN and not corrupt(this->tmp_segment))
             {
-                std::cerr << "recv new client SYN segment" << std::endl;
+                std::cerr << "Receive new client SYN segment" << std::endl;
                 this->addr_to = client;
                 return NEW_CLIENT_SYN;
             }
             // recv segment belongs to no one
-            std::cerr << "recv segment belongs to no one, corruptness = " << corrupt(this->tmp_segment) << std::endl;
+            std::cerr << "Receive segment belongs to no one, corruptness = " << corrupt(this->tmp_segment) << std::endl;
             std::cerr << this->tmp_segment << std::endl;
             return -1;
         }
