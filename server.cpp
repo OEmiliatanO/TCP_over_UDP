@@ -16,7 +16,7 @@ using std::cout, std::cerr, std::cin, std::endl, std::format;
 constexpr uint16_t listen_port = 9230;
 constexpr size_t buf_size = 20;
 
-void server_func(tcp_connection& channel, int thread_id)
+void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
 {
     char buf[buf_size]{};
     char data[buf_size]{};
@@ -24,7 +24,12 @@ void server_func(tcp_connection& channel, int thread_id)
     ssize_t recv_num;
     while(~(recv_num = channel.recv((void *)buf, buf_size)))
     {
-        cout << "Opcode: " << (int)buf[0] << std::endl;
+        if (recv_num == CLOSE_SIGNAL)
+        {
+            cout << format("thread #{}: Ready to close.", thread_id) << endl;
+            manager.release(thread_id);
+            break;
+        }
         if (buf[0] == 1)
         {
             cout << format("thread #{}: recv from {}:{}: \"dns {}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
@@ -36,11 +41,15 @@ void server_func(tcp_connection& channel, int thread_id)
         {
             cout << format("thread #{}: recv from {}:{}: \"{}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
         }
+        else
+        {
+            cout << format("thread #{}: Unknown OPcode from {}:{}: {}", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), (int)buf[0]) << endl;
+        }
         memset(buf, 0, sizeof(buf));
         memset(data, 0, sizeof(data));
     }
 
-    cout << format("thread #{}: close connection", thread_id) << endl;
+    cout << format("thread #{}: close connection.", thread_id) << endl;
 
 }
 
@@ -65,13 +74,19 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
         return 1;
     }
     
-    tcp_manager server;
-    server.sock_fd = sock_fd;
-    server.addr_from = addr_serv;
-    server.server_func = server_func;
+    tcp_manager manager(sock_fd);
+    manager.addr_from = addr_serv;
     
-    std::cout << "Listen in port #" << listen_port << std::endl;
-    server.listen();
+    cout << "Listen in port #" << listen_port << endl;
+    manager.listen();
+
+    std::vector<std::thread> tpool;
+    for (int id; (id = manager.accept()); )
+    {
+        if (id < 0) { cout << "Connect failed." << endl; continue; }
+        tpool.emplace_back(main_server, std::ref(manager), std::ref(manager.connections[id]), id);
+        tpool.back().detach();
+    }
 
     return 0;
 }

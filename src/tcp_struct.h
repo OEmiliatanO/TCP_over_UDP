@@ -2,6 +2,7 @@
 #define __TCP_STRUCT_H__
 
 #include <iostream>
+#include <cstring>
 #include <format>
 #include <tcp_para.h>
 
@@ -16,6 +17,11 @@ struct tcp_segment
     uint16_t checksum: 16;
     uint16_t urg_ptr: 16;
     char data[MSS];
+
+    void clear()
+    {
+        memset(this, 0, sizeof(*this));
+    }
 };
 
 std::ostream& operator<<(std::ostream& os, tcp_segment seg)
