@@ -6,10 +6,13 @@
 #include <format>
 #include <tcp_para.h>
 
+using port_t = uint16_t;
+using seq_t = uint32_t;
+
 struct tcp_segment
 {
-    uint16_t src_port: 16, dst_port: 16;
-    uint32_t seq: 32, ack: 32;
+    port_t src_port: 16, dst_port: 16;
+    seq_t seq: 32, ack: 32;
     char header_len: 4; // words
     char padding: 6;
     bool URG: 1, ACK: 1, PSH: 1, RST: 1, SYN: 1, FIN: 1;

@@ -33,4 +33,12 @@ int gen_id()
     return uniform_dist(eng);
 }
 
+int get_random()
+{
+    static std::random_device r;
+    static std::default_random_engine eng(r());
+    static std::uniform_int_distribution<int> uniform_dist(1, 1e6);
+    return uniform_dist(eng);
+}
+
 #endif
