@@ -30,6 +30,7 @@ void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
             manager.release(thread_id);
             break;
         }
+        // dns service
         if (buf[0] == 1)
         {
             cout << format("thread #{}: recv from {}:{}: \"dns {}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
@@ -37,13 +38,26 @@ void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
             cout << "The IP address is " << data << std::endl;
             channel.send((void *)data, strlen(data));
         }
+        // message transmission
         else if (buf[0] == 2)
         {
             cout << format("thread #{}: recv from {}:{}: \"{}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
         }
+        // calculate service
+        else if (buf[0] == 3)
+        {
+        }
+        // transmission file service
+        else if (buf[0] == 4)
+        {
+        }
+        // require file service
+        else if (buf[0] == 5)
+        {
+        }
         else
         {
-            cout << format("thread #{}: Unknown OPcode from {}:{}: {}", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), (int)buf[0]) << endl;
+            //cout << format("thread #{}: Unknown OPcode from {}:{}: {}", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), (int)buf[0]) << endl;
         }
         memset(buf, 0, sizeof(buf));
         memset(data, 0, sizeof(data));
