@@ -1,6 +1,8 @@
 #include <iostream>
 #include <format>
 #include <string>
+#include <fstream>
+
 #include <unistd.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -37,7 +39,7 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
     while ((id = client.connect(addr_serv)) < 0);
     auto& channel = client.connections[id];
 
-    std::cout << format("OP:\n\tdns <host>\n\tsend <string>\n\tcal <num> <op> <num>\n\ttrans <file path>\n\trequest\n\tclose") << std::endl;
+    std::cout << format("OP:\n\tdns <host>\n\tsend <string>\n\tcal <num> <op> <num>\n\ttrans <file path>\n\trequest <required file> <file to store>\n\tclose") << std::endl;
     while (true)
     {
         char message[20]{};
@@ -72,6 +74,34 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
         }
         else if((begin_pos = input.find("request")) != std::string::npos)
         {
+            std::string rfile, saving_file;
+            std::cin >> rfile >> saving_file;
+
+            std::fstream fs;
+            fs.open(saving_file, std::ios::binary | std::ios::out);
+            
+            constexpr size_t chunk_size = 10000;
+            char buffer[chunk_size];
+            message[0] = 5;
+            strcpy(message+1, rfile.c_str());
+            channel.send((void *)message, (size_t)1+rfile.size());
+            channel.recv((void *)respond, 20);
+            
+            auto file_size = (size_t)atoi(respond);
+            std::cout << std::format("File size = {} bytes", file_size) << std::endl;
+            auto remaining_file_size = file_size;
+            while (remaining_file_size)
+            {
+                ssize_t recv_num = channel.recv((void *)buffer, std::min(remaining_file_size, chunk_size));
+                if (recv_num < 0)
+                {
+                    std::cerr << "Receiving error: recv_num = " << recv_num << std::endl;
+                    break;
+                }
+                remaining_file_size -= (size_t)recv_num;
+                std::cout << std::format("Received {:.2f} % of file", 100.0*(file_size-remaining_file_size)/file_size) << std::endl;
+                fs.write(buffer, (size_t)recv_num);
+            }
         }
         else if((begin_pos = input.find("close")) != std::string::npos)
         {

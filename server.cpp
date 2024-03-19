@@ -1,8 +1,11 @@
 #include <iostream>
+#include <filesystem>
 #include <format>
 #include <string>
 #include <vector>
 #include <thread>
+#include <fstream>
+
 #include <unistd.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -20,7 +23,7 @@ void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
 {
     char buf[buf_size]{};
     char data[buf_size]{};
-    cout << format("thread #{}: start to recv data", thread_id) << endl;
+    cout << format("thread #{}: start to receive data", thread_id) << endl;
     ssize_t recv_num;
     while(~(recv_num = channel.recv((void *)buf, buf_size)))
     {
@@ -33,7 +36,7 @@ void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
         // dns service
         if (buf[0] == 1)
         {
-            cout << format("thread #{}: recv from {}:{}: \"dns {}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
+            cout << format("thread #{}: receive from {}:{}: \"dns {}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
             strcpy(data, DNS(buf+1));
             cout << "The IP address is " << data << std::endl;
             channel.send((void *)data, strlen(data));
@@ -41,7 +44,7 @@ void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
         // message transmission
         else if (buf[0] == 2)
         {
-            cout << format("thread #{}: recv from {}:{}: \"{}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
+            cout << format("thread #{}: receive from {}:{}: \"{}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
         }
         // calculate service
         else if (buf[0] == 3)
@@ -54,6 +57,27 @@ void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
         // require file service
         else if (buf[0] == 5)
         {
+            std::fstream fs;
+            std::string file{buf+1};
+            fs.open(file, std::ios::binary | std::ios::in);
+
+            constexpr size_t chunk_size = 10000;
+            char buffer[chunk_size];
+            
+            auto file_size = std::filesystem::file_size(std::filesystem::path{file});
+            auto remaining_file_size = file_size;
+            strcpy(data, std::to_string(file_size).c_str());
+            
+            cout << format("thread #{}: File size = {} bytes", thread_id, file_size) << endl;
+            channel.send((void *)data, strlen(data));
+            while (remaining_file_size)
+            {
+                auto send_num = std::min(chunk_size, remaining_file_size);
+                fs.read(buffer, send_num);
+                channel.send(buffer, send_num);
+                remaining_file_size -= send_num;
+                std::cout << std::format("thread #{}: Sent {:.2f} % of file", thread_id, 100.0*(file_size-remaining_file_size)/file_size) << std::endl;
+            }
         }
         else
         {
