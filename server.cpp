@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <ranges>
 #include <fstream>
 
 #include <unistd.h>
@@ -49,10 +50,76 @@ void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
         // calculate service
         else if (buf[0] == 3)
         {
+            std::string expression{buf+1};
+            std::vector<std::string> op;
+            for (auto word : expression | std::views::split(' '))
+                op.emplace_back(std::string_view(word));
+
+            double res = 0;
+            if (op[0] == "+")
+            {
+                double a = stod(op[1]), b = stod(op[2]);
+                res = a + b;
+            }
+            else if (op[0] == "-")
+            {
+                double a = stod(op[1]), b = stod(op[2]);
+                res = a - b;
+            }
+            else if (op[0] == "*")
+            {
+                double a = stod(op[1]), b = stod(op[2]);
+                res = a * b;
+            }
+            else if (op[0] == "/")
+            {
+                double a = stod(op[1]), b = stod(op[2]);
+                res = a / b;
+            }
+            else if (op[0] == "^")
+            {
+                double a = stod(op[1]), b = stod(op[2]);
+                res = pow(a, b);
+            }
+            else if (op[0] == "sqrt")
+            {
+                double a = stod(op[1]);
+                res = sqrt(a);
+            }
+
+            strcpy(data, std::to_string(res).c_str());
+            channel.send((void *)data, strlen(data));
         }
         // transmission file service
         else if (buf[0] == 4)
         {
+            std::string s_buf{buf+1};
+            std::vector<std::string> tmp_str;
+            for (auto word : s_buf | std::views::split(' '))
+                tmp_str.emplace_back(std::string_view(word));
+
+            std::fstream fs;
+            std::string file = tmp_str[0];
+            fs.open(file, std::ios::binary | std::ios::out);
+
+            constexpr size_t chunk_size = 10000;
+            char buffer[chunk_size];
+
+            size_t file_size = std::stoi(tmp_str[1]);
+            auto remaining_file_size = file_size;
+
+            while (remaining_file_size)
+            {
+                ssize_t recv_num = channel.recv((void *)buffer, std::min(remaining_file_size, chunk_size));
+                if (recv_num < 0)
+                {
+                    cerr << "Receiving error: recv_num = " << recv_num << endl;
+                    break;
+                }
+                remaining_file_size -= (size_t)recv_num;
+                cout << std::format("Received {:.2f} % of file", 100.0*(file_size-remaining_file_size)/file_size) << endl;
+                fs.write(buffer, (size_t)recv_num);
+            }
         }
         // require file service
         else if (buf[0] == 5)
