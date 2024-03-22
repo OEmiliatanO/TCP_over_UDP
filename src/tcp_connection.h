@@ -30,10 +30,6 @@ namespace tcp_connection
     
     constexpr ssize_t CLOSE_SIGNAL = -2;
 
-    constexpr int SLOW_START = 1;
-    constexpr int CONGESTION_AVOIDANCE = 2;
-    constexpr int FAST_RECOVERY = 3;
-
     struct connection
     {
         int thread_id;
@@ -66,7 +62,6 @@ namespace tcp_connection
             this->cwnd = MSS;
             this->connected = false;
             this->ssthresh = threshold;
-            this->congestion_state = SLOW_START;
         }
 
         void load_segment(tcp_struct::segment& segment)
@@ -203,41 +198,7 @@ namespace tcp_connection
             }
         }
         */
-        const std::string_view congestion_state_table[4]{"", "slow start", "congestion avoidance","fast recovery"};
-        void timeout_trans()
-        {
-            std::cerr << std::format("====thread #{}: Timeout: {} -> slow start====", thread_id, congestion_state_table[congestion_state]) << std::endl;
-            this->congestion_state = SLOW_START;
-            this->ssthresh = this->cwnd >> 1;
-            this->cwnd = MSS;
-        }
-
-        void newACK_trans()
-        {
-            std::cerr << std::format("====thread #{}: New ACK: {} -> ", thread_id, congestion_state_table[congestion_state]);
-            if (this->congestion_state == SLOW_START)
-            {
-                this->cwnd += MSS;
-                if (this->cwnd >= ssthresh) this->congestion_state = CONGESTION_AVOIDANCE;
-            }
-            else if (this->congestion_state == CONGESTION_AVOIDANCE)
-                this->cwnd += MSS * MSS / this->cwnd;
-            else
-            {
-                this->congestion_state = CONGESTION_AVOIDANCE;
-                this->cwnd = this->ssthresh;
-            }
-            std::cerr << std::format("{}====", congestion_state_table[congestion_state]) << std::endl;
-        }
-
-        void dup3ACK_trans()
-        {
-            std::cerr << std::format("====thread #{}: Dup 3 ACKs: {} -> fast recovery====", thread_id, congestion_state_table[congestion_state]) << std::endl;
-            this->congestion_state = FAST_RECOVERY;
-            this->ssthresh = this->cwnd >> 1;
-            this->cwnd = this->ssthresh + 3 * MSS;
-        }
-
+        
         std::mutex create_qu_mutex;
         std::deque<packet_t> create_send_qu(const void* data, size_t len)
         {
@@ -287,7 +248,6 @@ namespace tcp_connection
             std::chrono::steady_clock::time_point st;
             auto timer_running = false;
             auto timeout = 1000.0ms, estimate_RTT = 0.0ms, dev_RTT = 0.0ms;
-            auto loss_tested = false;
             std::map<tcp_struct::seq_t, size_t> ack_counter;
             std::cerr << std::format("\nIn send(), start transmit data with {} bytes", len) << std::endl;
             while (not send_qu.empty())
@@ -303,9 +263,8 @@ namespace tcp_connection
                     total_send += (*sent_itor).first - (*sent_itor).second.header_len * 4;
                     
                     std::cerr << std::format("thread #{}: current total send byte: {}", thread_id, total_send) << std::endl;
-                    std::cerr << std::format("  seq = {}, ack = {}", (tcp_struct::seq_t)(*sent_itor).second.seq, (tcp_struct::seq_t)(*sent_itor).second.ack) << std::endl;
-                    std::cerr << std::format("  congestion state = {}, cwnd = {}, rwnd = {}, threshold = {}", 
-                            congestion_state_table[congestion_state], cwnd, rwnd, ssthresh) << std::endl;
+                    std::cerr << std::format("  seq = {}, ack = {}", 
+                            (tcp_struct::seq_t)(*sent_itor).second.seq, (tcp_struct::seq_t)(*sent_itor).second.ack) << std::endl;
 
                     auto [send_num, segment] = *sent_itor++;
 
@@ -316,15 +275,7 @@ namespace tcp_connection
                                 thread_id, (tcp_struct::seq_t)(*(sent_itor-1)).second.seq, (tcp_struct::seq_t)(*(sent_itor-1)).second.ack) << std::endl;
                         continue;
                     }
-                    // paclet lost at byte 4096
-                    if (not loss_tested and total_send >= 4096)
-                    {
-                        std::cerr << std::format("thread #{}: lose packet, seq = {}, ack = {}", 
-                                thread_id, (tcp_struct::seq_t)(*(sent_itor-1)).second.seq, (tcp_struct::seq_t)(*(sent_itor-1)).second.ack) << std::endl;
-                        loss_tested = true;
-                        continue;
-                    }
-                    
+                   
                     std::this_thread::sleep_for(10ms);
                     while (sendto(this->sock_fd, (char *)&segment, send_num, 0, (sockaddr *)&this->addr_to, (socklen_t)this->len_addr_to) < 0)
                         std::cerr << std::format("thread #{}: In send(), sendto() errno: ", thread_id) << errno << std::endl;
@@ -346,20 +297,6 @@ namespace tcp_connection
                         thread_id, (tcp_struct::seq_t)recv_segment.seq, (tcp_struct::seq_t)recv_segment.ack) << std::endl;
 
                 ++ack_counter[recv_ack];
-                if (ack_counter[recv_ack] >= 2 and congestion_state == FAST_RECOVERY)
-                    cwnd += MSS;
-
-                // fast retransmit
-                if (ack_counter[recv_ack] >= 3)
-                {
-                    std::cerr << std::format("thread #{}: Receive 3 duplicate ACKs, ack = {}, retransmit packet with seq = {}, ack = {}", 
-                            thread_id, recv_ack, (tcp_struct::seq_t)(*acked_itor).second.seq, (tcp_struct::seq_t)(*acked_itor).second.ack) << std::endl;
-                    auto [send_num, segment] = *acked_itor;
-                    while (sendto(this->sock_fd, (char *)&segment, send_num, 0, (sockaddr *)&this->addr_to, (socklen_t)this->len_addr_to) < 0);
-                    ack_counter.erase(recv_ack);
-                    
-                    dup3ACK_trans();
-                }
 
                 // new ACK
                 if (recv_segment.ACK and ack_counter[recv_ack] <= 1)
@@ -370,7 +307,6 @@ namespace tcp_connection
                         this->rwnd = recv_segment.window;
                     }
                     
-                    newACK_trans();
                     ack_counter.clear();
                     ack_counter[recv_ack] = 1;
                 }
@@ -403,7 +339,6 @@ namespace tcp_connection
                     while (sendto(this->sock_fd, (char *)&segment, send_num, 0, (sockaddr *)&this->addr_to, (socklen_t)this->len_addr_to) < 0);
                     timeout *= 2;
 
-                    timeout_trans();
                     ack_counter.clear();
                 }
                 std::cerr << std::endl;
@@ -412,17 +347,18 @@ namespace tcp_connection
             return len;
         }
 
+
+        bool timer_running = false;
+        size_t counter = 0;
+        std::chrono::steady_clock::time_point st;
+
+        packet_t packet;
+        std::map<tcp_struct::seq_t, packet_t> receive_map;
         // user API
         ssize_t recv(void* buf, size_t len)
         {
             if (not connected) return -1;
 
-            //static auto timer_running = false;
-            static auto counter = 0;
-            static std::chrono::steady_clock::time_point st;
-
-            static packet_t packet;
-            static std::map<tcp_struct::seq_t, packet_t> receive_map;
             while (true)
             {
                 auto it = receive_map.find(this->ack);
@@ -493,7 +429,7 @@ namespace tcp_connection
                 std::cerr << std::format("thread #{}: Receive segment with {} byte data", thread_id, data_len) << std::endl;
                 ++counter;
 
-                /* delayed ACK
+                // delayed ACK
                 if (not timer_running)
                 {
                     st = std::chrono::steady_clock::now();
@@ -501,6 +437,10 @@ namespace tcp_connection
                 }
                 else if (std::chrono::steady_clock::now() - st > 600ms or counter >= 2)
                 {
+                    if (counter >= 2)
+                        std::cerr << std::format("thread #{}: counter >= 2", thread_id) << std::endl;
+                    else
+                        std::cerr << std::format("thread #{}: > 600ms", thread_id) << std::endl;
                     timer_running = false;
                     counter = 0;
                     tcp_struct::segment segment;
@@ -509,7 +449,6 @@ namespace tcp_connection
                     segment.checksum = tcp_checksum((void *)&segment, segment.header_len * 4);
                     send_packet(segment);
                 }
-                */
 
                 std::cerr << std::format("  send ACK, seq = {}, ack = {}", this->seq, this->ack) << std::endl;
                 std::this_thread::sleep_for(10ms);
