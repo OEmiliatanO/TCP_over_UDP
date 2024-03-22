@@ -20,7 +20,7 @@ using std::cout, std::cerr, std::cin, std::endl, std::format;
 constexpr uint16_t listen_port = 9230;
 constexpr size_t buf_size = 20;
 
-void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
+void main_server(tcp_manager::manager& manager, tcp_connection::connection& channel, int thread_id)
 {
     char buf[buf_size]{};
     char data[buf_size]{};
@@ -28,7 +28,7 @@ void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
     ssize_t recv_num;
     while(~(recv_num = channel.recv((void *)buf, buf_size)))
     {
-        if (recv_num == CLOSE_SIGNAL)
+        if (recv_num == tcp_connection::CLOSE_SIGNAL)
         {
             cout << format("thread #{}: Ready to close.", thread_id) << endl;
             manager.release(thread_id);
@@ -155,32 +155,12 @@ void main_server(tcp_manager& manager, tcp_connection& channel, int thread_id)
     }
 
     cout << format("thread #{}: close connection.", thread_id) << endl;
-
+    cout << format("Current number of online clients: {}", manager.client_num) << endl;
 }
 
 int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
 {
-    int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock_fd < 0)
-    {
-        cerr << "socket error" << endl;
-        return 1;
-    }
-
-    struct sockaddr_in addr_serv;
-    memset(&addr_serv, 0, sizeof(struct sockaddr_in));
-    addr_serv.sin_family = AF_INET;
-    addr_serv.sin_port = htons(listen_port);
-    addr_serv.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    if(bind(sock_fd, (struct sockaddr *)&addr_serv, sizeof(addr_serv)) < 0)
-    {
-        cerr << "bind error" << endl;
-        return 1;
-    }
-    
-    tcp_manager manager(sock_fd);
-    manager.addr_from = addr_serv;
+    tcp_manager::manager manager(listen_port);
     
     cout << "Listen in port #" << listen_port << endl;
     manager.listen();

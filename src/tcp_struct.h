@@ -6,28 +6,31 @@
 #include <format>
 #include <tcp_para.h>
 
-using port_t = uint16_t;
-using seq_t = uint32_t;
 
-struct tcp_segment
+namespace tcp_struct
 {
-    port_t src_port: 16, dst_port: 16;
-    seq_t seq: 32, ack: 32;
-    char header_len: 4; // words
-    char padding: 6;
-    bool URG: 1, ACK: 1, PSH: 1, RST: 1, SYN: 1, FIN: 1;
-    uint16_t window: 16;
-    uint16_t checksum: 16;
-    uint16_t urg_ptr: 16;
-    char data[MSS];
-
-    void clear()
+    using port_t = uint16_t;
+    using seq_t = uint32_t;
+    struct segment
     {
-        memset(this, 0, sizeof(*this));
-    }
-};
+        port_t src_port: 16, dst_port: 16;
+        seq_t seq: 32, ack: 32;
+        char header_len: 4; // words
+        char padding: 6;
+        bool URG: 1, ACK: 1, PSH: 1, RST: 1, SYN: 1, FIN: 1;
+        uint16_t window: 16;
+        uint16_t checksum: 16;
+        uint16_t urg_ptr: 16;
+        char data[MSS];
 
-std::ostream& operator<<(std::ostream& os, tcp_segment seg)
+        void clear()
+        {
+            memset(this, 0, sizeof(*this));
+        }
+    };
+}
+
+std::ostream& operator<<(std::ostream& os, tcp_struct::segment seg)
 {
     os << std::format(
             "\

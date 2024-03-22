@@ -21,7 +21,7 @@ uint16_t tcp_checksum(void *segment, size_t len) // data, byte
     return ~checksum;
 }
 
-bool corrupt(tcp_segment& segment)
+bool corrupt(tcp_struct::segment& segment)
 {
     return tcp_checksum((void *)&segment, (size_t)segment.header_len * 4) != 0;
 }

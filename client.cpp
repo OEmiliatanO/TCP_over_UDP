@@ -20,24 +20,11 @@ constexpr char DNS_OP = 1;
 
 int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
 {
-    int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock_fd < 0)
-    {
-        cerr << "socket error" << endl;
-        return 1;
-    }
-
-    struct sockaddr_in addr_serv;
-    memset(&addr_serv, 0, sizeof(struct sockaddr_in));
-    addr_serv.sin_family = AF_INET;
-    addr_serv.sin_port = htons(server_port);
-    addr_serv.sin_addr.s_addr = inet_addr(host);
-
-    tcp_manager client(sock_fd);
+    tcp_manager::manager client(host, server_port);
 
     cout << format("connect to {}:{}", host, server_port) << endl;
     int id = -1;
-    while ((id = client.connect(addr_serv)) < 0);
+    while ((id = client.connect()) < 0);
     auto& channel = client.connections[id];
 
     cout << format("OP:\n\tdns <host>\n\tsend <string>\n\tcal <num> <op> <num>/<num> sqrt\n\ttrans <local file to transmit> <remote file to store>\n\trequest <remote file to transmit> <local file to store>\n\tclose") << endl;
@@ -113,8 +100,9 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
                 fs.read(buffer, send_num);
                 channel.send(buffer, send_num);
                 remaining_file_size -= send_num;
-                cout << format("Sent {:.2f} % of file", 100.0*(file_size-remaining_file_size)/file_size) << endl;
+                cout << format("Send {:.2f} % of file", 100.0*(file_size-remaining_file_size)/file_size) << endl;
             }
+            cout << format("Send {} with total {} bytes to server.", tfile, file_size) << endl;
         }
         else if((begin_pos = input.find("request")) != std::string::npos)
         {
@@ -139,13 +127,14 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
                 ssize_t recv_num = channel.recv((void *)buffer, std::min(remaining_file_size, chunk_size));
                 if (recv_num < 0)
                 {
-                    cerr << "Receiving error: recv_num = " << recv_num << endl;
+                    cout << "Receiving error: recv_num = " << recv_num << endl;
                     break;
                 }
                 remaining_file_size -= (size_t)recv_num;
-                cout << std::format("Received {:.2f} % of file", 100.0*(file_size-remaining_file_size)/file_size) << endl;
+                cout << format("Received {:.2f} % of file", 100.0*(file_size-remaining_file_size)/file_size) << endl;
                 fs.write(buffer, (size_t)recv_num);
             }
+            cout << format("Write totally {} bytes into {}", file_size, saving_file) << endl;
         }
         else if((begin_pos = input.find("close")) != std::string::npos)
         {
