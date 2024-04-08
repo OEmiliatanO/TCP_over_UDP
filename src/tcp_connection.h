@@ -138,6 +138,14 @@ namespace tcp_connection
             std::cerr << std::format("{}====", congestion_state_table[congestion_state]) << std::endl;
         }
 
+        void dup3ACK_trans()
+        {
+            std::cerr << std::format("====thread #{}: Dup 3 ACKs: {} -> slow start====", thread_id, congestion_state_table[congestion_state]) << std::endl;
+            this->congestion_state = SLOW_START;
+            this->ssthresh = this->cwnd >> 1;
+            this->cwnd = MSS;
+        }
+
         std::mutex create_qu_mutex;
         std::deque<packet_t> create_send_qu(const void* data, size_t len)
         {
@@ -249,6 +257,7 @@ namespace tcp_connection
                     auto [send_num, segment] = *acked_itor;
                     while (sendto(this->sock_fd, (char *)&segment, send_num, 0, (sockaddr *)&this->addr_to, (socklen_t)this->len_addr_to) < 0);
                     ack_counter.erase(recv_ack);
+                    dup3ACK_trans();
                 }
 
                 // new ACK
