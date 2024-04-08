@@ -142,9 +142,12 @@ namespace tcp_connection
         void dup3ACK_trans()
         {
             std::cerr << std::format("====thread #{}: Dup 3 ACKs: {} -> fast recovery====", thread_id, congestion_state_table[congestion_state]) << std::endl;
-            this->congestion_state = FAST_RECOVERY;
-            this->ssthresh = this->cwnd >> 1;
-            this->cwnd = this->ssthresh + 3 * MSS;
+            if (this->congestion_state != FAST_RECOVERY)
+            {
+                this->congestion_state = FAST_RECOVERY;
+                this->ssthresh = this->cwnd >> 1;
+                this->cwnd = this->ssthresh + 3 * MSS;
+            }
         }
 
         std::mutex create_qu_mutex;
