@@ -191,6 +191,7 @@ namespace tcp_connection
             size_t total_send = 0;
             std::chrono::steady_clock::time_point st;
             auto timer_running = false;
+            tcp_struct::seq_t now_measure = std::numeric_limits<tcp_struct::seq_t>::max();
             auto timeout = 1000.0ms, estimate_RTT = 0.0ms, dev_RTT = 0.0ms;
             auto loss_tested = false;
             std::map<tcp_struct::seq_t, size_t> ack_counter;
@@ -229,16 +230,17 @@ namespace tcp_connection
                         loss_tested = true;
                         continue;
                     }
-                    
+
+                    if (not timer_running and now_measure == std::numeric_limits<tcp_struct::seq_t>::max())
+                    {
+                        now_measure = segment.seq;
+                        timer_running = true;
+                        st = std::chrono::steady_clock::now();
+                    }
+
                     std::this_thread::sleep_for(10ms);
                     while (sendto(this->sock_fd, (char *)&segment, send_num, 0, (sockaddr *)&this->addr_to, (socklen_t)this->len_addr_to) < 0)
                         std::cerr << std::format("thread #{}: In send(), sendto() errno: ", thread_id) << errno << std::endl;
-                }
-
-                if (not timer_running)
-                {
-                    timer_running = true;
-                    st = std::chrono::steady_clock::now();
                 }
 
                 // receive ACKs
@@ -264,27 +266,30 @@ namespace tcp_connection
                     ack_counter.erase(recv_ack);
                     
                     dup3ACK_trans();
+                    if (timer_running)
+                        st = std::chrono::steady_clock::now();
                 }
 
                 // new ACK
-                if (recv_segment.ACK and ack_counter[recv_ack] <= 1)
+                if (recv_segment.ACK and ack_counter[recv_ack] <= 1 and recv_segment.ack > this->acked)
                 {
-                    if (recv_segment.ack > this->acked)
-                    {
-                        this->acked = recv_segment.ack;
-                        this->rwnd = recv_segment.window;
-                    }
-                    
+                    this->acked = recv_segment.ack;
+                    this->rwnd = recv_segment.window;
                     newACK_trans();
                     ack_counter.clear();
                     ack_counter[recv_ack] = 1;
-                }
-                
-                while (not send_qu.empty() and (*acked_itor).second.seq < this->acked)
-                {
-                    std::cerr << std::format("thread #{}: acked_itor.seq = {} < acked = {}, pop out.", 
-                            thread_id, (tcp_struct::seq_t)(*acked_itor).second.seq, this->acked) << std::endl;
-                    if (timer_running)
+
+                    while (not send_qu.empty() and (*acked_itor).second.seq < this->acked)
+                    {
+                        std::cerr << std::format("thread #{}: acked_itor.seq = {} < acked = {}, pop out.", 
+                                thread_id, (tcp_struct::seq_t)(*acked_itor).second.seq, this->acked) << std::endl;
+
+                        to_send_num -= (*acked_itor).first - (*acked_itor).second.header_len * 4;
+                        ++acked_itor;
+                        send_qu.pop_front();
+                    }
+
+                    if (timer_running and recv_segment.ack > now_measure)
                     {
                         auto sample_RTT = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - st);
                         estimate_RTT = (1-alpha) * estimate_RTT + alpha * sample_RTT;
@@ -294,12 +299,17 @@ namespace tcp_connection
                                 thread_id, sample_RTT.count(), estimate_RTT.count(), dev_RTT.count(), timeout.count()) << std::endl;
                         timer_running = false;
                     }
-
-                    to_send_num -= (*acked_itor).first - (*acked_itor).second.header_len * 4;
-                    ++acked_itor;
-                    send_qu.pop_front();
+                    
+                    if (std::distance(acked_itor, sent_itor) > 0)
+                    {
+                        timer_running = true;
+                        st = std::chrono::steady_clock::now();
+                        now_measure = std::numeric_limits<tcp_struct::seq_t>::max();
+                    }
+                    else
+                        timer_running = false;
                 }
-
+                
                 // timeout
                 if (timer_running and std::chrono::steady_clock::now() - st >= timeout)
                 {
@@ -307,6 +317,7 @@ namespace tcp_connection
                     auto [send_num, segment] = *acked_itor;
                     while (sendto(this->sock_fd, (char *)&segment, send_num, 0, (sockaddr *)&this->addr_to, (socklen_t)this->len_addr_to) < 0);
                     timeout *= 2;
+                    st = std::chrono::steady_clock::now();
 
                     timeout_trans();
                     ack_counter.clear();
