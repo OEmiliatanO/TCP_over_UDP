@@ -277,7 +277,6 @@ namespace tcp_connection
                     this->rwnd = recv_segment.window;
                     newACK_trans();
                     ack_counter.clear();
-                    ack_counter[recv_ack] = 1;
 
                     while (not send_qu.empty() and (*acked_itor).second.seq < this->acked)
                     {
