@@ -82,7 +82,7 @@ namespace tcp_manager
             addr_serv.sin_port = htons(port);
             addr_serv.sin_addr.s_addr = inet_addr(host);
 
-            if(::bind(this->sock_fd, (struct sockaddr *)&addr_serv, sizeof(addr_serv)) < 0)
+            if (::bind(this->sock_fd, (struct sockaddr *)&addr_serv, sizeof(addr_serv)) < 0)
                 std::cerr << "Bind error, errno: " << errno << std::endl;
 
             this->addr_to = addr_serv;
@@ -172,6 +172,7 @@ namespace tcp_manager
                         connections[thread_id].receive_qu.emplace_back(recv_num, segment);
                         connections[thread_id].rwnd -= (recv_num - segment.header_len * 4);
                         connections[thread_id].receive_qu_cv.notify_one();
+                        //std::cerr << std::format("Mux thread: Place segment, recv_size = {}\n", recv_num - segment.header_len * 4) << std::endl;
                     }
                 }
             }
