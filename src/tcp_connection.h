@@ -341,7 +341,7 @@ namespace tcp_connection
 
         void sendACK()
         {
-            static tcp_struct::segment segment;
+            tcp_struct::segment segment;
             load_segment(segment);
             segment.ACK = true;
             segment.checksum = tcp_checksum((void *)&segment, segment.header_len * 4);
@@ -351,11 +351,10 @@ namespace tcp_connection
 
         std::chrono::milliseconds delay_duration = 500ms;
         std::map<tcp_struct::seq_t, packet_t> receive_map;
+        tcp_struct::seq_t max_recv_seq = 0;
+        bool detect_gap = false;
         ssize_t recv(void* buf, size_t len)
         {
-            static tcp_struct::seq_t max_recv_seq = 0;
-            static bool detect_gap = false;
-
             packet_t swp_packet;
             size_t packet_cnt = 0;
 
@@ -542,6 +541,8 @@ RETRIEVE_PACKET:
                     this->rwnd += data_size, this->ack += data_size;
 
                     // gap eliminated
+                    std::cerr << std::format("thread #{}: detect_gap = {}, this->ack = {}, max_recv_seq = {}", 
+                            thread_id, detect_gap, this->ack, max_recv_seq) << std::endl;
                     if (detect_gap and this->ack >= max_recv_seq)
                     {
                         detect_gap = false;
