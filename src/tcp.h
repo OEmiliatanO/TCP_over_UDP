@@ -100,7 +100,7 @@ namespace tcp_manager
         void create_connection(int thread_id, int _sock_fd, 
                 tcp_struct::seq_t _seq, tcp_struct::seq_t _ack, 
                 sockaddr_in& _addr_from, sockaddr_in& _addr_to, 
-                size_t _header_len)
+                size_t _header_len, uint16_t window, uint8_t window_scale)
         {
             connections[thread_id].thread_id = thread_id;
             connections[thread_id].sock_fd = _sock_fd;
@@ -111,6 +111,8 @@ namespace tcp_manager
             connections[thread_id].len_addr_from = sizeof(_addr_from);
             connections[thread_id].len_addr_to = sizeof(_addr_to);
             connections[thread_id].header_len = _header_len;
+            connections[thread_id].other_rwnd = window << window_scale;
+            connections[thread_id].other_window_scale = window_scale;
         }
 
         void multiplex()
@@ -145,7 +147,8 @@ namespace tcp_manager
                             
                             create_connection(thread_id, this->sock_fd, INIT_ISN(), segment.seq + 1, 
                                     this->addr_from, client, 
-                                    sizeof(segment) - MSS * sizeof(char));
+                                    sizeof(segment) - MSS * sizeof(char),
+                                    segment.window, segment.data[2]);
                             connections[thread_id].receive_qu.emplace_back(recv_num, segment);
                             
                             std::cerr << std::format("Mux thread: Receive from {}:{} new SYN segment.", 
@@ -170,7 +173,7 @@ namespace tcp_manager
                         auto thread_id = mapping[key];
                         std::lock_guard<std::mutex> lock(connections[thread_id].receive_qu_mutex);
                         connections[thread_id].receive_qu.emplace_back(recv_num, segment);
-                        connections[thread_id].rwnd -= (recv_num - segment.header_len * 4);
+                        connections[thread_id].this_rwnd -= (recv_num - segment.header_len * 4);
                         connections[thread_id].receive_qu_cv.notify_one();
                     }
                 }
@@ -211,9 +214,12 @@ namespace tcp_manager
             // send SYN-ACK
             channel.load_segment(segment);
             segment.ACK = true, segment.SYN = true;
+            segment.data[0] = 3; // WSOPT
+            segment.data[1] = 3;
+            segment.data[2] = window_scale;
             segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4);
             std::cerr << std::format("thread #{}: Send SYN-ACK packet, {} bytes", thread_id, segment.header_len * 4) << std::endl;
-            channel.send_packet(segment);
+            channel.send_packet_opt(segment, 3);
             channel.seq += 1;
 
             // receive ACK
@@ -257,13 +263,17 @@ namespace tcp_manager
             tcp_struct::segment segment;
             create_connection(thread_id, this->sock_fd, INIT_ISN(), 0, 
                     addr_from, addr_to, 
-                    sizeof(segment) - MSS * sizeof(char));
+                    sizeof(segment) - MSS * sizeof(char),
+                    MSS, 0);
 
             connections[thread_id].connected = true;
 
             tcp_connection::connection& channel = connections[thread_id];
             channel.load_segment(segment);
             segment.SYN = true;
+            segment.data[0] = 3; // WSOPT
+            segment.data[1] = 3;
+            segment.data[2] = window_scale;
             segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4);
             
             std::cerr << "=====Start the three-way handshake=====" << std::endl;
@@ -302,8 +312,11 @@ namespace tcp_manager
 
             std::cerr << std::format("Receive a packet (SYN-ACK) from {}:{}", inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port));
             std::cerr << std::format("\tReceive a packet (seq_num = {}, ack_num = {})", (uint16_t)segment.seq, (uint16_t)segment.ack) << std::endl;
+            std::cerr << std::format("\twindow = {}, window_scale = {}", (size_t)segment.window, (size_t)segment.data[2]) << std::endl;
             channel.seq = segment.ack;
             channel.ack = segment.seq + 1;
+            channel.other_window_scale = segment.data[2];
+            channel.other_rwnd = segment.window << channel.other_window_scale;
 
             // send ACK
             channel.load_segment(segment);
