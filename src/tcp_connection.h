@@ -242,24 +242,20 @@ namespace tcp_connection
                     auto [send_num, segment] = *sent_itor++;
 
                     // packet lost with 1e-6 probability
-                    /*
                     if (get_random() <= 1)
                     {
                         std::cerr << std::format("thread #{}: lose packet, seq = {}, ack = {}", 
                                 thread_id, (tcp_struct::seq_t)(*(sent_itor-1)).second.seq, (tcp_struct::seq_t)(*(sent_itor-1)).second.ack) << std::endl;
                         continue;
                     }
-                    */
                     // paclet lost at byte 4096
-                    /*
-                     * if (not loss_tested and total_send >= 4096)
+                    if (not loss_tested and total_send >= 4096)
                     {
                         std::cerr << std::format("thread #{}: lose packet, seq = {}, ack = {}", 
                                 thread_id, (tcp_struct::seq_t)(*(sent_itor-1)).second.seq, (tcp_struct::seq_t)(*(sent_itor-1)).second.ack) << std::endl;
                         loss_tested = true;
                         continue;
                     }
-                    */
 
                     if (not timer_running and now_measure == std::numeric_limits<tcp_struct::seq_t>::max())
                     {
