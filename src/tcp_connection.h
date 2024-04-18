@@ -530,7 +530,7 @@ RETRIEVE_PACKET:
                     // gap eliminated
                     std::cerr << std::format("thread #{}: detect_gap = {}, this->ack = {}, max_recv_seq = {}", 
                             thread_id, detect_gap, this->ack, max_recv_seq) << std::endl;
-                    if (detect_gap and this->ack >= max_recv_seq)
+                    if (detect_gap and this->ack > max_recv_seq)
                     {
                         detect_gap = false;
                         std::cerr << std::format("thread #{}: this->ack = {} > max_recv_seq = {}, gap eliminated", 
