@@ -39,7 +39,7 @@ void main_server(tcp_manager::manager& manager, tcp_connection::connection& chan
         {
             cout << format("thread #{}: receive from {}:{}: \"dns {}\"", thread_id, inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port), buf+1) << endl;
             strcpy(data, DNS(buf+1));
-            cout << "The IP address is " << data << std::endl;
+            cout << "The IP address is " << data << endl;
             channel.send((void *)data, strlen(data));
         }
         // message transmission
