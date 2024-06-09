@@ -13,9 +13,11 @@ HEADER:=src/tcp.h src/tcp_para.h src/tcp_struct.h src/tcp_utili.h
 dep: $(SOURCE) $(HEADER_DIR) $(HEADER)
 	$(CC) $(FLAG) -I $(HEADER_DIR) -c $(CLIE_SOURCE)
 	$(CC) $(FLAG) -I $(HEADER_DIR) -c $(SERV_SOURCE)
-all: $(SERV_OBJ) $(CLIE_OBJ)
+
 	$(CC) $(CLIE_OBJ) -o $(CLIE_ELF) $(LFLAG)
 	$(CC) $(SERV_OBJ) -o $(SERV_ELF) $(LFLAG)
+
+all: dep
 
 .PHONY: clean
 clean:
