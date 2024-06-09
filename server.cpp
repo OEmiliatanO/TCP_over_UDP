@@ -6,6 +6,7 @@
 #include <thread>
 #include <ranges>
 #include <fstream>
+#include <cstdlib>
 
 #include <unistd.h>
 #include <netdb.h>
@@ -17,8 +18,7 @@
 
 using std::cout, std::cerr, std::cin, std::endl, std::format;
 
-constexpr uint16_t listen_port = 9230;
-constexpr size_t buf_size = 20;
+constexpr size_t buf_size = 100;
 
 void main_server(tcp_manager::manager& manager, tcp_connection::connection& channel, int thread_id)
 {
@@ -160,6 +160,7 @@ void main_server(tcp_manager::manager& manager, tcp_connection::connection& chan
 
 int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
 {
+    uint16_t listen_port = static_cast<uint16_t>(std::atoi(argv[1]));
     tcp_manager::manager manager(listen_port);
     
     cout << "Listen in port #" << listen_port << endl;
