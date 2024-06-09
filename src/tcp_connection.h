@@ -434,8 +434,12 @@ RETRIEVE_PACKET:
                     max_recv_seq = std::max(seq_num, max_recv_seq);
                     receive_map[seq_num] = packet;
                     //std::cerr << std::format("thread #{}: this->ack = {}, seq_num = {}", thread_id, this->ack, seq_num) << std::endl;
-                    std::cerr << std::format("thread #{}: receive packet (SEQ = {}, ACK = {})", 
-                            thread_id, seq_num, (tcp_struct::seq_t)recv_segment.ack) << std::endl;
+                    if (detect_gap)
+                        std::cerr << std::format("thread #{}: receive packet (SEQ = {}, ACK = {}) (detect gap)", 
+                                thread_id, seq_num, (tcp_struct::seq_t)recv_segment.ack) << std::endl;
+                    else
+                        std::cerr << std::format("thread #{}: receive packet (SEQ = {}, ACK = {})", 
+                                thread_id, seq_num, (tcp_struct::seq_t)recv_segment.ack) << std::endl;
 
                     // receive out-of-order segment, detect gap
                     if (not detect_gap and this->ack < seq_num)
