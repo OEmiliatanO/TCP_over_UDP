@@ -7,6 +7,7 @@
 #include <cstring>
 #include <map>
 #include <future>
+#include <chrono>
 #include <variant>
 #include <string_view>
 #include <mutex>
@@ -27,7 +28,8 @@
 
 namespace tcp_manager
 {
-    constexpr size_t MAX_CLIENT_NUM = 20;
+    using namespace std::chrono_literals;
+    constexpr size_t MAX_CLIENT_NUM = 30;
     using addrs_t = std::pair<std::string, std::string>;
 
     struct manager
@@ -59,8 +61,7 @@ namespace tcp_manager
             addr_serv.sin_port = htons(listen_port);
             addr_serv.sin_addr.s_addr = htonl(INADDR_ANY);
 
-            if(::bind(this->sock_fd, (struct sockaddr *)&addr_serv, sizeof(addr_serv)) < 0)
-                std::cerr << "Bind error, errno: " << errno << std::endl;
+            if(::bind(this->sock_fd, (struct sockaddr *)&addr_serv, sizeof(addr_serv)) < 0) {} // ignore
             
             this->addr_from = addr_serv;
             this->len_addr_from = sizeof(this->addr_from);
@@ -82,8 +83,7 @@ namespace tcp_manager
             addr_serv.sin_port = htons(port);
             addr_serv.sin_addr.s_addr = inet_addr(host);
 
-            if (::bind(this->sock_fd, (struct sockaddr *)&addr_serv, sizeof(addr_serv)) < 0)
-                std::cerr << "Bind error, errno: " << errno << std::endl;
+            if (::bind(this->sock_fd, (struct sockaddr *)&addr_serv, sizeof(addr_serv)) < 0) {} // ignore
 
             this->addr_to = addr_serv;
             this->len_addr_from = sizeof(this->addr_from);
@@ -130,11 +130,11 @@ namespace tcp_manager
                     if (auto res = mapping.find(key); res == mapping.end())
                     {
                         // receive SYN
-                        if (is_server_side and segment.SYN and not corrupt(segment))
+                        if (is_server_side and segment.SYN and not corrupt(segment, recv_num))
                         {
                             if (client_num == MAX_CLIENT_NUM)
                             {
-                                std::cerr << "Mux thread: Reach the max number of connected client." << std::endl;
+                                std::cerr << "Reach the max number of connected client." << std::endl;
                                 continue;
                             }
                             
@@ -142,8 +142,6 @@ namespace tcp_manager
                             while (used.find(thread_id = gen_id()) != used.end());
                             used[thread_id] = true;
                             mapping[key] = thread_id;
-                            std::cerr << std::format("Mux thread: Add [{}, {}] to dict.", 
-                                    sockaddr_to_string(this->addr_from), sockaddr_to_string(client)) << std::endl;
                             
                             create_connection(thread_id, this->sock_fd, INIT_ISN(), segment.seq + 1, 
                                     this->addr_from, client, 
@@ -151,9 +149,13 @@ namespace tcp_manager
                                     segment.window, segment.data[2]);
                             connections[thread_id].receive_qu.emplace_back(recv_num, segment);
                             
-                            std::cerr << std::format("Mux thread: Receive from {}:{} new SYN segment.", 
+                            std::cerr << std::format("Receive packet {} : {} : SYN : SEQ = {}, ACK = {}", 
                                     inet_ntoa(client.sin_addr), 
-                                    ntohs(client.sin_port)) << std::endl;
+                                    ntohs(client.sin_port),
+                                    (tcp_struct::seq_t)segment.seq, 
+                                    (tcp_struct::seq_t)segment.ack) << std::endl;
+                            std::cerr << std::format("(Add client {})", 
+                                    sockaddr_to_string(client)) << std::endl;
                             
                             std::promise<int> promise_thread_id;
                             get_thread_id = promise_thread_id.get_future();
@@ -161,9 +163,9 @@ namespace tcp_manager
                         }
                         else
                         {
-                            std::cerr << std::format("Mux thread: Receive unknown segment from {}:{}, corruptness = {}", 
+                            std::cerr << std::format("Mux thread: Receive unknown segment from {}:{} ({} bytes), corruptness = {}", 
                                     inet_ntoa(client.sin_addr), 
-                                    ntohs(client.sin_port), corrupt(segment)) << std::endl;
+                                    ntohs(client.sin_port), recv_num, corrupt(segment, recv_num)) << std::endl;
                         }
                     }
                     // recv segment for certain thread
@@ -197,52 +199,77 @@ namespace tcp_manager
             while (not get_thread_id.valid()) std::this_thread::yield();
             auto thread_id = get_thread_id.get();
 
-            std::cerr << "=====Start three-way handshake=====" << std::endl;
+            // SYN-RECEIVED
+            std::cerr << std::format("thread #{}: (connecting)", thread_id) << std::endl;
             ++client_num;
 
             tcp_connection::connection& channel = connections[thread_id];
 
             channel.connected = true;
             
-            std::cerr << std::format("thread #{} create", thread_id) << std::endl;
-
             tcp_struct::segment segment;
             channel.header_len = sizeof(segment) - MSS * sizeof(char);
             
             ssize_t recv_num = channel.recv_packet(segment);
-            if (not (recv_num > 0 and segment.SYN and not corrupt(segment))) return -1;
+            if (not (recv_num > 0 and segment.SYN and not corrupt(segment, recv_num))) return -1;
 
             // send SYN-ACK
-            channel.load_segment(segment);
-            segment.ACK = true, segment.SYN = true;
-            segment.data[0] = 3; // WSOPT
-            segment.data[1] = 3;
-            segment.data[2] = window_scale;
-            segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4);
-            std::cerr << std::format("thread #{}: Send SYN-ACK packet, {} bytes", thread_id, segment.header_len * 4) << std::endl;
-            channel.send_packet_opt(segment, 3);
-            channel.seq += 1;
+            auto send_SYN_ACK = [&]() {
+                channel.load_segment(segment);
+                segment.ACK = true, segment.SYN = true;
+                segment.data[0] = 3; // WSOPT
+                segment.data[1] = 3;
+                segment.data[2] = window_scale;
+                segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4 + 3);
+                std::cerr << std::format("thread #{}: cwnd = {}, rwnd = {}, threshold = {}", 
+                        thread_id, channel.cwnd, channel.this_rwnd, channel.ssthresh) << std::endl;
+                std::cerr << std::format("            send SYN-ACK (SEQ = {}, ACK = {})", 
+                        (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
+                channel.send_packet_opt(segment, 3);
+            };
+
+RETRANS_SYNACK:
+            send_SYN_ACK();
 
             // receive ACK
-            recv_num = channel.recv_packet(segment);
-            if (recv_num > 0 and segment.ACK and not corrupt(segment))
+            size_t t = 1000, accum_t = 0;
+            bool timeout = false;
+            while (not channel.has_packet())
             {
-                std::cerr << std::format("thread #{}: Receive ACK packet", thread_id) << std::endl;
-                std::cerr << std::format("Receive a packet (seq_num = {}, ack_num = {})", 
-                        (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
-                std::cerr << "=====Complete the three-way handshake=====" << std::endl;
-                std::cerr << "=====Connection established=====" << std::endl;
-                std::cerr << std::format("Current seq = {}, ack = {}", channel.seq, channel.ack) << std::endl;
-
-                return thread_id;
+                std::this_thread::sleep_for(10ms);
+                accum_t += 10;
+                if (accum_t >= t)
+                {
+                    t <<= 1;
+                    accum_t = 0;
+                    std::cerr << std::format("thread #{}: retransmit SYN-ACK", thread_id) << std::endl;
+                    send_SYN_ACK();
+                    if (t >= 31000)
+                    {
+                        timeout = true;
+                        break;
+                    }
+                }
             }
-            // source release
+            if (not timeout)
+            {
+                recv_num = channel.recv_packet(segment);
+                if (recv_num > 0 and segment.ACK and not corrupt(segment, recv_num))
+                {
+                    channel.seq += 1;
+                    std::cerr << std::format("thread #{}: receive ACK (SEQ = {}, ACK = {})", 
+                            thread_id, (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
+                    std::cerr << std::format("thread #{}: (connected)", thread_id) << std::endl;
+
+                    return thread_id;
+                }
+                goto RETRANS_SYNACK;
+            }
             else
             {
-                std::cerr << std::format("thread #{}: Error. ACK = {}, Corruptness = {}", 
-                        thread_id, (bool)segment.ACK, corrupt(segment)) << std::endl;
-                std::cerr << std::format("Receive a packet (seq_num = {}, ack_num = {})", 
-                        (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
+                // source release
+                std::cerr << std::format("thread #{}: error. ACK = {}, Corruptness = {}", 
+                        thread_id, (bool)segment.ACK, corrupt(segment, recv_num)) << std::endl;
                 connections.erase(thread_id);
                 auto key = std::make_pair(sockaddr_to_string(channel.addr_from), sockaddr_to_string(channel.addr_to));
                 mapping.erase(key);
@@ -270,17 +297,19 @@ namespace tcp_manager
             connections[thread_id].connected = true;
 
             tcp_connection::connection& channel = connections[thread_id];
-            channel.load_segment(segment);
-            segment.SYN = true;
-            segment.data[0] = 3; // WSOPT
-            segment.data[1] = 3;
-            segment.data[2] = window_scale;
-            segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4);
-            
-            std::cerr << "=====Start the three-way handshake=====" << std::endl;
-            // send SYN
-            channel.send_packet_opt(segment, 3);
-            std::cerr << std::format("Send SYN to {}:{}", inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port)) << std::endl;
+            auto send_SYN = [&]() {
+                channel.load_segment(segment);
+                segment.SYN = true;
+                segment.data[0] = 3; // WSOPT
+                segment.data[1] = 3;
+                segment.data[2] = window_scale;
+                segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4 + 3);
+                
+                // send SYN
+                channel.send_packet_opt(segment, 3);
+            };
+            send_SYN();
+            std::cerr << std::format("Send SYN (SEQ = {}, ACK = {})", channel.seq, channel.ack) << std::endl;
 
             // load local socket information
             // local socket information can be obtained "only after" send the data :(
@@ -295,25 +324,40 @@ namespace tcp_manager
             threads[mux_thread_id] = std::thread(&manager::multiplex, this);
             threads[mux_thread_id].detach();
 
-            // receive SYN-ACK
+            // should receive SYN-ACK packet
             segment.clear();
-            std::cerr << "Wait for ACK" << std::endl;
-            ssize_t recv_num = channel.recv_packet(segment);
-            if (recv_num < 0 or not (segment.ACK and segment.SYN and not corrupt(segment)))
+            //std::cerr << "Wait for ACK" << std::endl;
+            size_t t = 1000, accum_t = 0;
+            bool timeout = false;
+            while (not channel.has_packet())
             {
-                if (recv_num < 0)
-                    std::cerr << "recv_num < 0" << std::endl;
+                std::this_thread::sleep_for(10ms);
+                accum_t += 10;
+                if (accum_t >= t)
+                {
+                    timeout = true;
+                    break;
+                }
+            }
+
+            ssize_t recv_num = 0;
+            if (not timeout)
+                recv_num = channel.recv_packet(segment);
+            if (timeout or not (recv_num > 0 and segment.ACK and segment.SYN and not corrupt(segment, recv_num)))
+            {
+                if (timeout)
+                    std::cerr << "Timeout: Not receive ACK" << std::endl;
                 else
-                    std::cerr << "Not receive ACK" << std::endl;
+                    std::cerr << "Error: Not receiving correct ACK" << std::endl;
+
                 mapping.erase(key);
                 connections.erase(thread_id);
                 threads.clear();
+                
                 return -1;
             }
 
-            std::cerr << std::format("Receive a packet (SYN-ACK) from {}:{}", inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port));
-            std::cerr << std::format("\tReceive a packet (seq_num = {}, ack_num = {})", (uint16_t)segment.seq, (uint16_t)segment.ack) << std::endl;
-            std::cerr << std::format("\twindow = {}, window_scale = {}", (size_t)segment.window, (size_t)segment.data[2]) << std::endl;
+            std::cerr << std::format("Receive SYN-ACK (SEQ = {}, ACK = {})", (uint16_t)segment.seq, (uint16_t)segment.ack) << std::endl;
             channel.seq = segment.ack;
             channel.ack = segment.seq + 1;
             channel.other_window_scale = segment.data[2];
@@ -324,12 +368,8 @@ namespace tcp_manager
             segment.ACK = true;
             segment.checksum = tcp_checksum((void *)&segment, (size_t)segment.header_len * 4);
 
-            std::cerr << std::format("Send a packet(ACK) to {}:{}", inet_ntoa(channel.addr_to.sin_addr), ntohs(channel.addr_to.sin_port)) << std::endl;
             channel.send_packet(segment);
 
-            std::cerr << "=====Complete the three-way handshake=====" << std::endl;
-            std::cerr << "=====Connection established=====" << std::endl;
-            std::cerr << std::format("Current seq = {}, ack = {}", channel.seq, channel.ack) << std::endl;
             ++client_num;
 
             return thread_id;
