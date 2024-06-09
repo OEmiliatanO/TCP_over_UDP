@@ -191,6 +191,7 @@ int main([[maybe_unused]]int argc, [[maybe_unused]]char *argv[])
     else if (mode == "--interact")
     {
         cout << format("OP:\n\tdns <host>\n\tsend <string>\n\tcal <num> <op> <num>/<num> sqrt\n\ttrans <local file to transmit> <remote file to store>\n\trequest <remote file to transmit> <local file to store>\n\tclose") << endl;
+        cout << "> ";
         while (true)
         {
             std::string order;
