@@ -106,7 +106,6 @@ namespace tcp_connection
             }
 
             ssize_t send_num;
-            std::this_thread::sleep_for(10ms);
             while ((send_num = sendto(this->sock_fd, (char *)&segment, segment.header_len * 4, 0, (sockaddr *)&this->addr_to, (socklen_t)this->len_addr_to)) < 0);
                 //std::cerr << std::format("thread #{}: sendto() errno: ", thread_id) << errno << std::endl;
             std::cerr << std::format("thread #{}: send packet (SEQ = {}, ACK = {})", 
@@ -125,7 +124,6 @@ namespace tcp_connection
             }
 
             ssize_t sent_num;
-            std::this_thread::sleep_for(10ms);
             while ((sent_num = sendto(this->sock_fd, (char *)&segment, (size_t)segment.header_len * 4 + send_num, 0, (sockaddr *)&this->addr_to, (socklen_t)this->len_addr_to)) < 0);
                 //std::cerr << std::format("thread #{}: In send(), sendto() errno: ", thread_id) << errno << std::endl;
             std::cerr << std::format("thread #{}: send packet (SEQ = {}, ACK = {})", 
@@ -144,7 +142,6 @@ namespace tcp_connection
             }
 
             ssize_t send_num;
-            std::this_thread::sleep_for(10ms);
             while ((send_num = sendto(this->sock_fd, (char *)&segment, segment.header_len * 4 + opt_size, 0, (sockaddr *)&this->addr_to, (socklen_t)this->len_addr_to)) < 0);
                 //std::cerr << std::format("thread #{}: sendto() errno: ", thread_id) << errno << std::endl;
             std::cerr << std::format("thread #{}: send packet: (SEQ = {}, ACK = {})", 
@@ -268,7 +265,7 @@ namespace tcp_connection
             std::chrono::steady_clock::time_point st;
             auto timer_running = false;
             tcp_struct::seq_t now_measure = std::numeric_limits<tcp_struct::seq_t>::max();
-            auto timeout = 1000.0ms, estimate_RTT = 0.0ms, dev_RTT = 0.0ms;
+            auto timeout = 1000.0ms, estimate_RTT = 30.0ms, dev_RTT = 0.0ms;
             std::map<tcp_struct::seq_t, size_t> ack_counter;
             //std::cerr << std::format("\nIn send(), start transmit data with {} bytes", len) << std::endl;
             std::cerr << std::format("thread #{}: transmit data with {} bytes", thread_id, len) << std::endl;
@@ -415,7 +412,6 @@ namespace tcp_connection
             load_segment(segment);
             segment.ACK = true;
             segment.checksum = tcp_checksum((void *)&segment, segment.header_len * 4);
-            std::this_thread::sleep_for(10ms);
             std::cerr << std::format("thread #{}: send ACK", thread_id) << std::endl;
             send_packet(segment);
         }
