@@ -96,7 +96,7 @@ namespace tcp_connection
         ssize_t send_packet(tcp_struct::segment& segment)
         {
             // packet lost with 1e-6 probability
-            if (get_random() <= 100000)
+            if (get_random() <= 1)
             {
                 std::cerr << std::format("thread #{}: lose packet (SEQ = {}, ACK = {})", 
                         thread_id, (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
@@ -114,7 +114,7 @@ namespace tcp_connection
         ssize_t send_packet(tcp_struct::segment& segment, size_t send_num)
         {
             // packet lost with 1e-6 probability
-            if (get_random() <= 100000)
+            if (get_random() <= 1)
             {
                 std::cerr << std::format("thread #{}: lose packet (SEQ = {}, ACK = {})", 
                         thread_id, (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
@@ -132,7 +132,7 @@ namespace tcp_connection
         ssize_t send_packet_opt(tcp_struct::segment& segment, size_t opt_size)
         {
             // packet lost with 1e-6 probability
-            if (get_random() <= 100000)
+            if (get_random() <= 1)
             {
                 std::cerr << std::format("thread #{}: lose packet (SEQ = {}, ACK = {})", 
                         thread_id, (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
