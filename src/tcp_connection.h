@@ -685,9 +685,8 @@ RETRIEVE_PACKET:
             while (this->has_packet())
                 recv_packet(segment);
 
+            std::cerr << std::format("thread #{}: Send FIN", thread_id) << std::endl;
             sendFIN(); // FIN_WAIT1
-            std::cerr << std::format("thread #{}: Send FIN, seq = {}, ack = {}, checksum = {}", 
-                    thread_id, this->seq, this->ack, (uint16_t)segment.checksum) << std::endl;
 
             while (true)
             {
@@ -700,8 +699,8 @@ RETRIEVE_PACKET:
                     if (accum_t >= t)
                     {
                         accum_t = 0;
-                        sendFIN();
                         std::cerr << std::format("thread #{}: Timeout, retransmit FIN segment.", thread_id) << std::endl;
+                        sendFIN();
                         if (not retry) break;
                         retry = false;
                     }
@@ -718,7 +717,7 @@ RETRIEVE_PACKET:
 
             // FIN_WAIT2
             // successfully recevice the ACK
-            std::cerr << std::format("thread #{}: Received ACK, seq = {}, ack = {}", 
+            std::cerr << std::format("thread #{}: Received ACK (SEQ = {}, ACK = {})", 
                     thread_id, (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
 
             size_t MSL = 1000, accum_t = 0;
