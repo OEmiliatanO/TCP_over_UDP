@@ -16,7 +16,7 @@ uint16_t tcp_checksum(void *segment, size_t len) // data, byte
 {
     uint16_t *p = (uint16_t *)segment;
     uint16_t checksum = 0;
-    for (size_t i = 0; i < len / 2; ++i, ++p)
+    for (size_t i = 0; i < (len+1) / 2; ++i, ++p)
         checksum += (*p) + ((checksum >> 15) & ((*p) >> 15));
     return ~checksum;
 }
@@ -24,6 +24,11 @@ uint16_t tcp_checksum(void *segment, size_t len) // data, byte
 bool corrupt(tcp_struct::segment& segment)
 {
     return tcp_checksum((void *)&segment, (size_t)segment.header_len * 4) != 0;
+}
+
+bool corrupt(tcp_struct::segment& segment, size_t size) // segment, byte
+{
+    return tcp_checksum((void *)&segment, size) != 0;
 }
 
 #endif
