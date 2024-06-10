@@ -49,6 +49,9 @@ namespace tcp_manager
         std::map<int, tcp_connection::connection> connections;
         std::map<int, bool> used;
 
+        std::deque<int> syn_queue;
+        std::mutex syn_queue_mutex;
+        std::condition_variable syn_queue_cv;
         manager(tcp_struct::port_t listen_port)
         {
             this->sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -157,10 +160,13 @@ namespace tcp_manager
                             std::cerr << std::format("(Add client {})", 
                                     sockaddr_to_string(client)) << std::endl;
 
-                            while (get_thread_id.valid()) std::this_thread::yield();
-                            std::promise<int> promise_thread_id;
-                            get_thread_id = promise_thread_id.get_future();
-                            promise_thread_id.set_value(thread_id);
+                            //while (get_thread_id.valid()) std::this_thread::yield();
+                            //std::promise<int> promise_thread_id;
+                            //get_thread_id = promise_thread_id.get_future();
+                            //promise_thread_id.set_value(thread_id);
+
+                            // push syn queue
+                            syn_queue.push_back(thread_id);
                             std::cerr << std::format("Create thread #{}", thread_id) << std::endl;
                         }
                         else
@@ -198,8 +204,15 @@ namespace tcp_manager
         // server
         int accept()
         {
-            while (not get_thread_id.valid()) std::this_thread::yield();
-            auto thread_id = get_thread_id.get();
+            //while (not get_thread_id.valid()) std::this_thread::yield();
+            //auto thread_id = get_thread_id.get();
+            //
+            // wait for the syn queue
+            
+            std::unique_lock<std::mutex> lock(syn_queue_mutex);
+            syn_queue_cv.wait(lock, [&] { return not syn_queue.empty(); });
+            auto thread_id = syn_queue.front(); syn_queue.pop_front();
+            lock.unlock();
 
             // SYN-RECEIVED
             std::cerr << std::format("thread #{}: (connecting)", thread_id) << std::endl;
