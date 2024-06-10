@@ -5,6 +5,8 @@ This small project builds TCP based on UDP.
 You can find how to use the simple TCP in client.cpp and server.cpp.
 
 **Master branch is implemented based on TCP Reno*
+**Tahoe branch is implemented based on TCP Tahoe*
+**Delayed_ACK branch is implemented based on delayed ACK*
 
 ## Compile
 
@@ -33,11 +35,11 @@ Then,
 ```
 
 The instructions: 
-1. --dns \<hostname\>
-2. --send \<string\>
-3. --cal \<num1\> \<op\> \<num2\>
-4. --trans \<local file\> \<path to be stored (remotely)\>
-5. --request \<remote file\> \<path to be stored (locally)\>
+1. `--dns <hostname>`
+2. `--send <string>`
+3. `--cal <num1> <op> <num2>`
+4. `--trans <local file> <path to be stored (remotely)>`
+5. `--request <remote file> <path to be stored (locally)>`
 
 ## Structure
 
