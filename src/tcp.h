@@ -367,7 +367,7 @@ RETRANS_SYNACK:
                 if (timeout)
                     std::cerr << "Timeout: Not receive ACK" << std::endl;
                 else
-                    std::cerr << "Error: Not receiving correct ACK" << std::endl;
+                    std::cerr << std::format("Error: Not receiving correct ACK (SYN = {}, ACK = {}, corruptness = {})", (bool)segment.SYN, (bool)segment.ACK, corrupt(segment, recv_num)) << std::endl;
 
                 mapping.erase(key);
                 connections.erase(thread_id);
