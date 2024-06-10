@@ -12,13 +12,32 @@ Require g++ version at least 13.1.0 and Linux environment.
 
 To compile:
 ```
-make dep all
+make
 ```
 
 To clean obj files:
 ```
 make clean
 ```
+
+## Usage
+
+First, 
+```
+./server <server port>
+```
+
+Then, 
+```
+./client <server IP> <server port> <--oneline/--interact> <instructions>
+```
+
+The instructions: 
+1. --dns \<hostname\>
+2. --send \<string\>
+3. --cal \<num1\> \<op\> \<num2\>
+4. --trans \<local file\> \<path to be stored (remotely)\>
+5. --request \<remote file\> \<path to be stored (locally)\>
 
 ## Structure
 
