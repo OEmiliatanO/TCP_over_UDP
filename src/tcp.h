@@ -166,7 +166,10 @@ namespace tcp_manager
                             //promise_thread_id.set_value(thread_id);
 
                             // push syn queue
+                            std::unique_lock<std::mutex> lock(syn_queue_mutex);
                             syn_queue.push_back(thread_id);
+                            syn_queue_cv.notify_one();
+                            lock.unlock();
                             std::cerr << std::format("Create thread #{}", thread_id) << std::endl;
                         }
                         else
