@@ -8,7 +8,7 @@ uint16_t INIT_ISN()
 {
     static std::random_device r;
     static std::default_random_engine eng(r());
-    static std::uniform_int_distribution<uint16_t> uniform_dist(0, (1 << 16)-1);
+    static std::uniform_int_distribution<uint16_t> uniform_dist(0, 10000);
     return uniform_dist(eng);
 }
 
