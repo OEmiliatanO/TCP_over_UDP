@@ -156,10 +156,12 @@ namespace tcp_manager
                                     (tcp_struct::seq_t)segment.ack) << std::endl;
                             std::cerr << std::format("(Add client {})", 
                                     sockaddr_to_string(client)) << std::endl;
-                            
+
+                            while (get_thread_id.valid()) std::this_thread::yield();
                             std::promise<int> promise_thread_id;
                             get_thread_id = promise_thread_id.get_future();
                             promise_thread_id.set_value(thread_id);
+                            std::cerr << std::format("Create thread #{}", thread_id) << std::endl;
                         }
                         else
                         {
@@ -277,6 +279,7 @@ RETRANS_SYNACK:
                 --client_num;
                 return -1;
             }
+            return -1;
         }
 
         // client
@@ -327,7 +330,7 @@ RETRANS_SYNACK:
             // should receive SYN-ACK packet
             segment.clear();
             //std::cerr << "Wait for ACK" << std::endl;
-            size_t t = 1000, accum_t = 0;
+            size_t t = 16000, accum_t = 0;
             bool timeout = false;
             while (not channel.has_packet())
             {
