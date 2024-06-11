@@ -446,11 +446,9 @@ RETRIEVE_PACKET:
                     {
                         std::cerr << std::format("thread #{}: expect SEQ = {}", thread_id, this->ack) << std::endl;
                         std::cerr << std::format("            but receive SEQ = {}", seq_num) << std::endl;
-                        std::cerr << std::format("            send duplicate ACKs") << std::endl;
                         detect_gap = true;
 
-                        for (size_t i = 0; i < 3; ++i)
-                            sendACK();
+                        sendACK();
 
                         if (packet_cnt)
                         {
