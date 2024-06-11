@@ -96,7 +96,7 @@ namespace tcp_connection
         ssize_t send_packet(tcp_struct::segment& segment)
         {
             // packet lost with 1e-6 probability
-            if (get_random() <= 1)
+            if (get_random() <= 100000)
             {
                 std::cerr << std::format("thread #{}: lose packet (SEQ = {}, ACK = {})", 
                         thread_id, (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
@@ -114,7 +114,7 @@ namespace tcp_connection
         ssize_t send_packet(tcp_struct::segment& segment, size_t send_num)
         {
             // packet lost with 1e-6 probability
-            if (get_random() <= 1)
+            if (get_random() <= 100000)
             {
                 std::cerr << std::format("thread #{}: lose packet (SEQ = {}, ACK = {})", 
                         thread_id, (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
@@ -132,7 +132,7 @@ namespace tcp_connection
         ssize_t send_packet_opt(tcp_struct::segment& segment, size_t opt_size)
         {
             // packet lost with 1e-6 probability
-            if (get_random() <= 1)
+            if (get_random() <= 100000)
             {
                 std::cerr << std::format("thread #{}: lose packet (SEQ = {}, ACK = {})", 
                         thread_id, (tcp_struct::seq_t)segment.seq, (tcp_struct::seq_t)segment.ack) << std::endl;
@@ -446,11 +446,9 @@ RETRIEVE_PACKET:
                     {
                         std::cerr << std::format("thread #{}: expect SEQ = {}", thread_id, this->ack) << std::endl;
                         std::cerr << std::format("            but receive SEQ = {}", seq_num) << std::endl;
-                        std::cerr << std::format("            send duplicate ACKs") << std::endl;
                         detect_gap = true;
 
-                        for (size_t i = 0; i < 3; ++i)
-                            sendACK();
+                        sendACK();
 
                         if (packet_cnt)
                         {
